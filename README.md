@@ -19,7 +19,46 @@ client → vpn →  |   netns-chaosbox      | → your service
 You can configure various network parameters on the Chaosbox node, including latency, jitter, packet loss, bandwidth limits, packet reordering, and all other impairment types supported by **tc**.
 
 Finally, Chaosbox is not only a practical solution, but also an excellent learning resource for understanding Linux networking. During its development, we encountered and resolved several classical issues related to network forwarding. You can reproduce these scenarios yourself—it’s both educational and fun. I’m glad to assist you if needed.
-# **1. Components**
+# **1. Comparison of Network Impairment Tools (Why netns-chaosbox is Different)**
+
+|Feature / Capability|**netns-chaosbox**|tc netem|Toxiproxy|Pumba|Chaos Mesh|Istio Fault Injection|WANem|
+|---|---|---|---|---|---|---|---|
+|**Impairment Direction**|**True bidirectional (TX + RX)**|Mostly outbound only|Outbound only (proxy)|Outbound only|Bidirectional|Bidirectional|Bidirectional|
+|**Ingress Processing (PREROUTING)**|**✔ Fully supported**|✘|✘|✘|✔|✔|✔|
+|**Egress Processing (POSTROUTING)**|**✔ Fully supported**|✘|✘|✘|✔|✔|✔|
+|**NAT / SNAT / MASQUERADE Support**|**✔ Full NAT pipeline (double NAT)**|✘|✘|✘|Partial|✔|✔|
+|**Policy Routing (RPDB)**|**✔ Advanced (multiple tables, rules)**|✘|✘|✘|✘|Partial|✘|
+|**Realistic Kernel Routing Simulation**|**✔ Highest realism**|Medium|Low|Medium|Medium|Medium|Medium|
+|**Asymmetric Routing Simulation**|**✔ Fully supported**|✘|✘|✘|Partial|Partial|Partial|
+|**VPN / Tunnel Support (SoftVPN / WG / IPSec)**|**✔ Fully compatible**|✘|✘|✘|✘|✘|✘|
+|**Virtual Topology (veth networks)**|**✔ Arbitrary topology**|✘|✘|✘|Partial|✘|✘|
+|**Layer of Operation**|**Linux Kernel L2/L3**|Kernel L3|Userspace TCP/UDP proxy|Docker layer|Kubernetes CNI|L7/Envoy|FreeBSD kernel|
+|**Standalone Usability**|**✔ Excellent**|✔|✔|✔|✘|✘|✘|
+|**Requires Docker?**|No|No|Yes|Yes|Yes|No||
+|**Requires Kubernetes?**|No|No|No|No|Yes|Yes||
+|**Typical Use Cases**|**System-level WAN simulation / VPN testing / kernel routing / protocol R&D**|Quick per-interface tests|App-layer chaos|Container chaos|Micro-service chaos|Mesh routing errors|WAN path simulation|
+|**Difficulty Level**|High (kernel & routing)|Low|Low|Medium|Medium|Medium|Medium|
+|**Flexibility**|**★★★★★ Highest**|★☆☆☆☆|★★☆☆☆|★★☆☆☆|★★★☆☆|★★★☆☆|★★★☆☆|
+|**Open Source**|✔|✔|✔|✔|✔|✔|✔|
+
+## **Why netns-chaosbox is Unique**
+
+**netns-chaosbox is the only open-source tool that:**
+
+- Simulates **both outbound and inbound** network impairment
+- Applies **full kernel NAT logic** (PREROUTING ⇆ POSTROUTING, reverse SNAT)
+- Supports **policy routing, custom route tables, asymmetric flows**
+- Works natively with **SoftVPN, WireGuard, OpenVPN, IPSec, tunnels**
+- Creates a **full virtual WAN path inside Linux** using namespaces + veth
+- Emulates **realistic multi-hop routing** and **double NAT** behavior
+- Provides **system-level, kernel-accurate WAN simulation** without Docker or Kubernetes
+
+It is far more than "just tc netem" or "just a proxy";  
+it is a **miniature WAN environment** inside your machine.
+
+
+
+# **2. Components**
 
 | Component                            | Description                                                   |
 | ------------------------------------ | ------------------------------------------------------------- |
@@ -34,7 +73,7 @@ Finally, Chaosbox is not only a practical solution, but also an excellent learni
 | **Policy routing (`ip rule`)**       | Forces traffic through chaos pipeline                         |
 | **Custom routing table (table 100)** | Outbound redirection to namespace                             |
 
-# **2. Architecture Overview**
+# **3. Architecture Overview**
 
 ``` scss
                       +------------------------------------+
@@ -92,7 +131,7 @@ Finally, Chaosbox is not only a practical solution, but also an excellent learni
                                     Internet
 ```
 
-# 3. **Outbound Path (Root → Chaosbox → Root → Your service)**
+# 4. **Outbound Path (Root → Chaosbox → Root → Your service)**
 
 ```scss
 ┌──────────────────────────────┐
@@ -157,7 +196,7 @@ veth2 (ingress)
 ens4 → Internet
 ```
 
-# **4. Inbound Path (YOUR Service → Root → Chaosbox → Root → App)**
+# **5. Inbound Path (YOUR Service → Root → Chaosbox → Root → App)**
 
 ```scss
 Internet
@@ -218,7 +257,7 @@ Route lookup (local)
 Local application (softvpn / ping process)
 ```
 
-# **5. Key Features**
+# **6. Key Features**
 
 -   **Outbound & inbound symmetrical impairment**
 -   **Two-stage NAT (namespace + root)** for correct return flows
@@ -227,7 +266,7 @@ Local application (softvpn / ping process)
 -   **Uber-clean rollback** (does not harm the host network)
 -   **100% reproducible** — ideal for networking R&D
 
-# **6. Deployment Script Summary**
+# **7. Deployment Script Summary**
 
 ### **Performs:**
 
@@ -249,10 +288,10 @@ Local application (softvpn / ping process)
 
 ------
 
-# **7. Bidirectional Forwarding & NAT Details (Important)**
+# **8. Bidirectional Forwarding & NAT Details (Important)**
 
 
-## **7.1 Outbound Flow (SNAT in namespace)**
+## **8.1 Outbound Flow (SNAT in namespace)**
 
 When packets **leave chaosbox namespace via `veth3`**:
 
@@ -274,7 +313,7 @@ impairment.
 
 ------
 
-## **7.2 Outbound Flow (SNAT on root WAN)**
+## **8.2 Outbound Flow (SNAT on root WAN)**
 
 After impairment, packets exit via root interface:
 
@@ -293,7 +332,7 @@ Required so that **Internet replies return to the correct host**.
 
 ------
 
-## **7.3 Inbound Flow (policy routing is critical)**
+## **8.3 Inbound Flow (policy routing is critical)**
 
 Returning packets arrive at `ens4`:
 
@@ -332,7 +371,7 @@ These rules produce:
 
 ------
 
-# **8. Traffic Path with iptables & routing**
+# **9. Traffic Path with iptables & routing**
 
 ## **Outbound Packet Example**
 
@@ -411,7 +450,7 @@ Back to root → application → client.
 ------
 
 
-## **9. Verification Tools**
+## **10. Verification Tools**
 
 ### **tcpdump**
 
@@ -432,7 +471,7 @@ Useful for verifying forward paths.
 
 ------
 
-## **9. Example Use Cases**
+## **11. Example Use Cases**
 
 | Use Case                        | Description                                  |
 | ------------------------------- | -------------------------------------------- |
