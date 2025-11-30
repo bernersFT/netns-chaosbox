@@ -2,7 +2,7 @@
 
 ### *Deterministic Linux Network Impairment Sandbox using Network Namespaces, veth pairs, policy routing, and NAT*
 
-`netns-chaosbox` is an out-of-the-box network impairment simulation platform—a fully self-contained, production-grade framework that emulates real-world network degradation conditions (latency, jitter, packet loss, bandwidth limitations, packet reordering, corruption, and blackhole scenarios) **without modifying the host network stack**.
+<font color=red>`netns-chaosbox`</font> is an out-of-the-box network impairment simulation platform—a fully self-contained, production-grade framework that emulates real-world network degradation conditions (latency, jitter, packet loss, bandwidth limitations, packet reordering, corruption, and blackhole scenarios) **without modifying the host network stack**.
 
 It accomplishes this through the use of **Linux network namespaces**, **veth pairs**, **policy routing**, and **multi-stage NAT**, enabling any application (VPN services, proxies, microservices, client test agents, etc.) to be routed through a controlled “chaos pipeline”.
 
@@ -444,8 +444,3 @@ Useful for verifying forward paths.
 | Research & teaching             | Network namespaces + routing + NAT concepts  |
 
 ------
-
-## **10. License**
-
-(Choose an Open Source license: MIT recommended)
-
