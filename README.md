@@ -63,9 +63,9 @@ Finally, Chaosbox is not only a practical solution, but also an excellent learni
                       |   |  veth1      |    |  veth3    | |
                       |   | 10.0.0.2    |    | 10.0.1.2  | |
                       |   +------+------+    +-----+-----+ |
-                      |          ^                   |      |
-                      |          |                   |      |
-                      |      routing: default via 10.0.1.1  |
+                      |          ^                   |     |
+                      |          |                   |     |
+                      |      routing: default via 10.0.1.1 |
                       |                                    |
                       +------------------------------------+
                                          |
