@@ -30,7 +30,7 @@ Finally, Chaosbox is not only a practical solution, but also an excellent learni
 |**Policy Routing (RPDB)**|**✔ Advanced (multiple tables, rules)**|✘|✘|✘|✘|Partial|✘|
 |**Realistic Kernel Routing Simulation**|**✔ Highest realism**|Medium|Low|Medium|Medium|Medium|Medium|
 |**Asymmetric Routing Simulation**|**✔ Fully supported**|✘|✘|✘|Partial|Partial|Partial|
-|**VPN / Tunnel Support (SoftVPN / WG / IPSec)**|**✔ Fully compatible**|✘|✘|✘|✘|✘|✘|
+|**VPN / Tunnel Support (SoftVPN / L2TP / IPSec)**|**✔ Fully compatible**|✘|✘|✘|✘|✘|✘|
 |**Virtual Topology (veth networks)**|**✔ Arbitrary topology**|✘|✘|✘|Partial|✘|✘|
 |**Layer of Operation**|**Linux Kernel L2/L3**|Kernel L3|Userspace TCP/UDP proxy|Docker layer|Kubernetes CNI|L7/Envoy|FreeBSD kernel|
 |**Standalone Usability**|**✔ Excellent**|✔|✔|✔|✘|✘|✘|
