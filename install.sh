@@ -15,7 +15,9 @@ set -euo pipefail
 #     ├ docker/docker-entrypoint.sh
 #     └ install.sh  (this script)
 ###############################################################
-
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DOCKER_DIR="${SCRIPT_DIR}/docker"
+CHAOSBOX_RUN="${SCRIPT_DIR}/chaosbox/latest/run_chaosbox.sh"
 CONFIG_FILE="${SCRIPT_DIR}/chaosbox.conf"
 PLACEHOLDER="__REQUIRED_CHANGE_ME__"
 
@@ -54,12 +56,6 @@ if grep -q "${PLACEHOLDER}" "${CONFIG_FILE}"; then
   err "Please edit this file and replace ALL placeholders with real values, then re-run ./install.sh."
   exit 1
 fi
-
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
-DOCKER_DIR="${SCRIPT_DIR}/docker"
-CHAOSBOX_RUN="${SCRIPT_DIR}/chaosbox/latest/run_chaosbox.sh"
 
 ###############################################################
 # Helper functions
