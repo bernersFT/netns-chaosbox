@@ -26,13 +26,48 @@ set -euo pipefail
 # Designed for reproducible and deterministic network simulation.
 ###############################################################################
 
-### === MUST CHANGE IT  ========================================== ###
-WAN_DEV="ens4"   # Outbound interface (modify as needed). Technically, It's defined by default route to the Internet. <--------- Very important
-WAN_DEV_IP="10.146.43.17/24"      # Change it to your real egress IP. <--------- Very important
+# Determine script directory and project root
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CONFIG_FILE="${PROJECT_ROOT}/chaosbox.conf"
 
-# Networks excluded from chaos path for avoiding impact on Mgmt  <--------- Very important
-MGMT_NET1="10.146.0.0/16"
-MGMT_NET2="10.145.0.0/16"
+# Placeholder marker used in chaosbox.conf
+PLACEHOLDER="__REQUIRED_CHANGE_ME__"
+
+# Utility: require a variable to be set and not be the placeholder
+require_var() {
+  local name="$1"
+  local value="${!name:-}"
+
+  if [ -z "${value}" ] || [ "${value}" = "${PLACEHOLDER}" ]; then
+    echo "[chaosbox][ERROR] Required variable '${name}' is not properly set."
+    echo "[chaosbox] Please edit '${CONFIG_FILE}' and set a valid value for '${name}'."
+    exit 1
+  fi
+}
+
+### === Load user config (mandatory) === ###
+if [ -f "${CONFIG_FILE}" ]; then
+  echo "[chaosbox] Loading user config from ${CONFIG_FILE}"
+  # shellcheck disable=SC1090
+  . "${CONFIG_FILE}"
+else
+  echo "[chaosbox][ERROR] Config file not found: ${CONFIG_FILE}"
+  echo "[chaosbox] Please create and edit this file before running Chaosbox."
+  exit 1
+fi
+
+### === Validate required variables (no defaults) === ###
+require_var "WAN_DEV"
+require_var "WAN_DEV_IP"
+require_var "MGMT_NET1"
+require_var "MGMT_NET2"
+
+echo "[chaosbox] Effective configuration:"
+echo "  WAN_DEV   = ${WAN_DEV}"
+echo "  WAN_DEV_IP= ${WAN_DEV_IP}"
+echo "  MGMT_NET1 = ${MGMT_NET1}"
+echo "  MGMT_NET2 = ${MGMT_NET2}"
 
 ### === Default configuration , But it's adjustable. ======================= ###  
 NS="chaosbox"

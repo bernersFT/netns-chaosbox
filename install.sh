@@ -16,6 +16,46 @@ set -euo pipefail
 #     └ install.sh  (this script)
 ###############################################################
 
+CONFIG_FILE="${SCRIPT_DIR}/chaosbox.conf"
+PLACEHOLDER="__REQUIRED_CHANGE_ME__"
+
+# Create chaosbox.conf template if missing
+if [[ ! -f "${CONFIG_FILE}" ]]; then
+  log "Config file '${CONFIG_FILE}' not found. Creating a template..."
+  cat > "${CONFIG_FILE}" <<EOF
+# Chaosbox user configuration
+# YOU MUST edit these values before running Chaosbox.
+# If any of them keep the placeholder value, Chaosbox will refuse to start.
+
+# Outbound interface used for Internet access (VERY IMPORTANT)
+# Example: "ens4", "eth0", "enp0s3"
+WAN_DEV="__REQUIRED_CHANGE_ME__"
+
+# Egress IP address of WAN_DEV in CIDR format (VERY IMPORTANT)
+# Example: "192.168.3.254/24"
+WAN_DEV_IP="__REQUIRED_CHANGE_ME__"
+
+# Management networks that MUST NOT go through the chaos path (VERY IMPORTANT)
+# Example:
+#   MGMT_NET1="192.168.1.0/24"
+#   MGMT_NET2="172.16.0.0/24"
+MGMT_NET1="__REQUIRED_CHANGE_ME__"
+MGMT_NET2="__REQUIRED_CHANGE_ME__"
+EOF
+
+  log "A config template has been created at: ${CONFIG_FILE}"
+  log "Please edit this file, set proper values, and re-run ./install.sh."
+  exit 0
+fi
+
+# If file exists, ensure user has edited it (no placeholders left)
+if grep -q "${PLACEHOLDER}" "${CONFIG_FILE}"; then
+  err "Config file '${CONFIG_FILE}' still contains placeholder values (${PLACEHOLDER})."
+  err "Please edit this file and replace ALL placeholders with real values, then re-run ./install.sh."
+  exit 1
+fi
+
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 DOCKER_DIR="${SCRIPT_DIR}/docker"

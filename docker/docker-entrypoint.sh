@@ -67,29 +67,28 @@ if [ ! -f "$INIT_FLAG" ]; then
   "${VPN_CMD}" localhost /SERVER /PASSWORD:"${SERVER_PASS}" \
     /CMD HubDelete default || echo "[entrypoint] default hub not found, ignore"
 
+  # Configure IPsec/L2TP by simulating interactive input via stdin
   if [ "$ENABLE_IPSEC" = "1" ]; then
-    echo "[entrypoint] enabling IPsec/L2TP via script (PSK=${IPSEC_PSK}, HUB=${HUB_NAME})..."
-
-    IPSEC_SCRIPT="/tmp/ipsec_enable.txt"
-    cat > "$IPSEC_SCRIPT" <<EOF
-IPsecEnable
-yes
-yes
-yes
-${IPSEC_PSK}
-${HUB_NAME}
-EOF
+    echo "[entrypoint] enabling IPsec/L2TP via interactive stdin (PSK=${IPSEC_PSK}, HUB=${HUB_NAME})..."
 
     set +e
-    "${VPN_CMD}" localhost /SERVER /PASSWORD:"${SERVER_PASS}" /IN:"${IPSEC_SCRIPT}"
+    # We run vpncmd in interactive server-admin mode and feed the exact
+    # sequence of keys you would type by hand:
+    #   1) IPsecEnable
+    #   2) yes (L2TP over IPsec)
+    #   3) yes (Raw L2TP)
+    #   4) yes (EtherIP / L2TPv3 over IPsec)
+    #   5) <PSK>
+    #   6) <Default Hub>
+    printf 'IPsecEnable\nyes\nyes\nyes\n%s\n%s\n' "${IPSEC_PSK}" "${HUB_NAME}" \
+      | "${VPN_CMD}" localhost /SERVER /PASSWORD:"${SERVER_PASS}"
     ipsec_rc=$?
     set -e
-    rm -f "$IPSEC_SCRIPT"
 
     if [ "$ipsec_rc" -ne 0 ]; then
-      echo "[entrypoint] WARNING: IPsecEnable via script failed with exit code ${ipsec_rc}" >&2
+      echo "[entrypoint] WARNING: IPsecEnable via stdin failed with exit code ${ipsec_rc}" >&2
     else
-      echo "[entrypoint] IPsecEnable via script succeeded (exit=${ipsec_rc})."
+      echo "[entrypoint] IPsecEnable via stdin succeeded (exit=${ipsec_rc})."
     fi
   else
     echo "[entrypoint] IPsec auto config disabled (VPN_ENABLE_IPSEC=${ENABLE_IPSEC})"
