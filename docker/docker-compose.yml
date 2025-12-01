@@ -1,6 +1,6 @@
 services:
   softvpn:
-    image: chaosbox/softether-vpn:latest
+    image: ghcr.io/bernersft/netns-chaosbox:latest
 
     # Uncomment when building locally:
     # build:
