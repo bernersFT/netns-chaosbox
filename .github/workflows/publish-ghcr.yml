@@ -4,22 +4,22 @@ on:
   push:
     branches: ["master"]
     tags:
-      - "v*.*.*"      # e.g. v1.0.0
-  workflow_dispatch:   # allow manual trigger from GitHub UI
+      - "v*.*.*"       
+  workflow_dispatch:     
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: netns-chaosbox
-  GHCR_USER: bernersft   # your GitHub username (for login)
-
+  IMAGE_NAME: netns-chaosbox   
+  OWNER: bernersft             
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
 
+
     permissions:
       contents: read
-      packages: write   # needed to push to GHCR
+      packages: write
 
     steps:
       - name: Checkout repository
@@ -28,21 +28,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
+      - name: Log in to GHCR with GITHUB_TOKEN
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ env.GHCR_USER }}
-          password: ${{ secrets.GHCR_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Determine version tag
         id: vars
         run: |
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
-            # If triggered by a git tag like v1.0.0, use that as version
+
             VERSION_TAG="${GITHUB_REF_NAME}"
           else
-            # Otherwise generate a simple version from date + short SHA
+
             SHORT_SHA="$(echo "${GITHUB_SHA}" | cut -c1-7)"
             VERSION_TAG="v$(date +'%Y.%m.%d')-${SHORT_SHA}"
           fi
@@ -53,20 +53,22 @@ jobs:
       - name: Build and push image to GHCR
         uses: docker/build-push-action@v5
         with:
+
           context: ./docker
           file: ./docker/Dockerfile
+
           push: true
           platforms: linux/amd64
           tags: |
-            ghcr.io/${{ env.GHCR_USER }}/${{ env.IMAGE_NAME }}:latest
-            ghcr.io/${{ env.GHCR_USER }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version_tag }}
+            ghcr.io/${{ env.OWNER }}/${{ env.IMAGE_NAME }}:latest
+            ghcr.io/${{ env.OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version_tag }}
 
       - name: Print summary
         run: |
           echo "------------------------------------------"
-          echo "netns-chaosbox Docker image published to GHCR"
+          echo "  netns-chaosbox Docker image published"
           echo "------------------------------------------"
           echo "Version tag: ${{ steps.vars.outputs.version_tag }}"
           echo "Images:"
-          echo "  ghcr.io/${{ env.GHCR_USER }}/${{ env.IMAGE_NAME }}:latest"
-          echo "  ghcr.io/${{ env.GHCR_USER }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version_tag }}"
+          echo "  ghcr.io/${{ env.OWNER }}/${{ env.IMAGE_NAME }}:latest"
+          echo "  ghcr.io/${{ env.OWNER }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version_tag }}"
