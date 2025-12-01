@@ -15,6 +15,14 @@ set -euo pipefail
 #     ├ docker/docker-entrypoint.sh
 #     └ install.sh  (this script)
 ###############################################################
+
+###############################################################
+# Helper functions
+###############################################################
+log() { echo "[install] $*"; }
+err() { echo "[install][ERROR] $*" >&2; }
+
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DOCKER_DIR="${SCRIPT_DIR}/docker"
 CHAOSBOX_RUN="${SCRIPT_DIR}/chaosbox/latest/run_chaosbox.sh"
@@ -57,11 +65,7 @@ if grep -q "${PLACEHOLDER}" "${CONFIG_FILE}"; then
   exit 1
 fi
 
-###############################################################
-# Helper functions
-###############################################################
-log() { echo "[install] $*"; }
-err() { echo "[install][ERROR] $*" >&2; }
+
 
 ###############################################################
 # Root permission check
