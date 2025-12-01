@@ -114,9 +114,9 @@ get_image() {
 comment_build() {
   # Comment build/context/dockerfile lines
   sed -i \
-    -e 's/^\(\s*\)\(build:.*\)$/\1#\2/' \
-    -e 's/^\(\s*\)\(context:.*\)$/\1#\2/' \
-    -e 's/^\(\s*\)\(dockerfile:.*\)$/\1#\2/' \
+    -e 's/^\(\s*\)\(build:.*\)$/\1# \2/' \
+    -e 's/^\(\s*\)\(context:.*\)$/\1# \2/' \
+    -e 's/^\(\s*\)\(dockerfile:.*\)$/\1# \2/' \
     "${COMPOSE_FILE}"
 }
 
@@ -185,6 +185,26 @@ else
   log "Chaosbox runtime script not found or not executable: ${CHAOSBOX_RUN}"
   log "If you need Chaosbox features, please ensure this script exists and is executable."
 fi
+
+### --------------------------------------------------------
+### Ensure required scripts (+x) after first clone
+### --------------------------------------------------------
+NEEDED_SCRIPTS=(
+  "${PROJECT_DIR}/start.sh"
+  "${PROJECT_DIR}/shutdown.sh"
+  "${PROJECT_DIR}/uninstall.sh"
+)
+
+for SCRIPT in "${NEEDED_SCRIPTS[@]}"; do
+  if [[ -f "$SCRIPT" ]]; then
+    if [[ ! -x "$SCRIPT" ]]; then
+      echo "[install] Adding +x permission to: $(basename "$SCRIPT")"
+      chmod +x "$SCRIPT"
+    fi
+  else
+    echo "[install] WARNING: Missing script: $SCRIPT"
+  fi
+done
 
 cat <<EOF
 

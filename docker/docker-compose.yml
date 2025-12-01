@@ -4,8 +4,8 @@ services:
 
     # Uncomment when building locally:
     # build:
-    #   context: ../
-    #   dockerfile: ../Dockerfile
+    #   context: .
+    #   dockerfile: ./Dockerfile
 
     container_name: softvpn
     restart: unless-stopped
