@@ -2,37 +2,63 @@
 set -euo pipefail
 
 ###############################################################
-# Chaosbox Installer
-# This script performs:
-#   1) Build & run SoftEther VPN in Docker which support L2TP, IPsec, Openvpn and SoftEther VPN client
-#   2) Run Chaosbox network simulation environment
+# Chaosbox + SoftEther VPN Installer
 #
-# Expected directory structure:
-#     netns-chaosbox/
-#     ├ chaosbox/latest/run_chaosbox.sh
-#     ├ docker/Dockerfile
-#     ├ docker/docker-compose.yml
-#     ├ docker/docker-entrypoint.sh
-#     └ install.sh  (this script)
+# Features:
+#   - Require chaosbox.conf to be properly configured
+#   - Read image from docker/docker-compose.yml
+#   - Ask user whether to build image locally (default: NO)
+#   - If NO: pull prebuilt image + comment out build section
+#   - If YES: uncomment build section + build with docker compose
+#   - Start softvpn container
+#   - Run chaosbox/latest/run_chaosbox.sh if present
 ###############################################################
-
-###############################################################
-# Helper functions
-###############################################################
-log() { echo "[install] $*"; }
-err() { echo "[install][ERROR] $*" >&2; }
-
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 DOCKER_DIR="${SCRIPT_DIR}/docker"
+COMPOSE_FILE="${DOCKER_DIR}/docker-compose.yml"
 CHAOSBOX_RUN="${SCRIPT_DIR}/chaosbox/latest/run_chaosbox.sh"
 CONFIG_FILE="${SCRIPT_DIR}/chaosbox.conf"
 PLACEHOLDER="__REQUIRED_CHANGE_ME__"
 
-# Create chaosbox.conf template if missing
-if [[ ! -f "${CONFIG_FILE}" ]]; then
-  log "Config file '${CONFIG_FILE}' not found. Creating a template..."
-  cat > "${CONFIG_FILE}" <<EOF
+log() { echo "[install] $*"; }
+err() { echo "[install][ERROR] $*" >&2; }
+
+###############################################################
+# Basic checks
+###############################################################
+require_root() {
+  if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
+    err "Please run this script as root (sudo ./install.sh)"
+    exit 1
+  fi
+}
+
+check_docker() {
+  if ! command -v docker >/dev/null 2>&1; then
+    err "Docker is not installed. Please install Docker first."
+    exit 1
+  fi
+
+  if ! docker compose version >/dev/null 2>&1; then
+    err "'docker compose' is not available. Please install the Docker Compose plugin."
+    exit 1
+  fi
+
+  if ! docker info >/dev/null 2>&1; then
+    err "Cannot talk to Docker daemon. Please ensure Docker is running."
+    exit 1
+  fi
+}
+
+###############################################################
+# chaosbox.conf handling (MANDATORY)
+###############################################################
+ensure_config() {
+  if [[ ! -f "${CONFIG_FILE}" ]]; then
+    log "Config file '${CONFIG_FILE}' not found. Creating a template..."
+    cat > "${CONFIG_FILE}" <<EOF
 # Chaosbox user configuration
 # YOU MUST edit these values before running Chaosbox.
 # If any of them keep the placeholder value, Chaosbox will refuse to start.
@@ -42,112 +68,137 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
 WAN_DEV="__REQUIRED_CHANGE_ME__"
 
 # Egress IP address of WAN_DEV in CIDR format (VERY IMPORTANT)
-# Example: "192.168.3.254/24"
+# Example: "1.2.3.4/30"
 WAN_DEV_IP="__REQUIRED_CHANGE_ME__"
 
 # Management networks that MUST NOT go through the chaos path (VERY IMPORTANT)
 # Example:
-#   MGMT_NET1="192.168.1.0/24"
-#   MGMT_NET2="172.16.0.0/24"
+#   MGMT_NET1="10.146.0.0/16"
+#   MGMT_NET2="10.145.0.0/16"
 MGMT_NET1="__REQUIRED_CHANGE_ME__"
 MGMT_NET2="__REQUIRED_CHANGE_ME__"
 EOF
 
-  log "A config template has been created at: ${CONFIG_FILE}"
-  log "Please edit this file, set proper values, and re-run ./install.sh."
-  exit 0
+    log "A config template has been created at: ${CONFIG_FILE}"
+    log "Please edit this file, set proper values, and re-run ./install.sh."
+    exit 0
+  fi
+
+  if grep -q "${PLACEHOLDER}" "${CONFIG_FILE}"; then
+    err "Config file '${CONFIG_FILE}' still contains placeholder value(s) (${PLACEHOLDER})."
+    err "Please edit this file and replace ALL placeholders with real values, then re-run ./install.sh."
+    exit 1
+  fi
+
+  log "Config file '${CONFIG_FILE}' looks valid (no placeholders)."
+}
+
+###############################################################
+# docker-compose.yml helpers
+###############################################################
+get_image() {
+  if [[ ! -f "${COMPOSE_FILE}" ]]; then
+    err "docker-compose.yml not found at: ${COMPOSE_FILE}"
+    exit 1
+  fi
+
+  local img
+  img=$(awk '/^[[:space:]]*image:/ {print $2; exit}' "${COMPOSE_FILE}")
+  if [[ -z "${img}" ]]; then
+    err "Could not find an 'image:' entry in ${COMPOSE_FILE}"
+    exit 1
+  fi
+  echo "${img}"
+}
+
+comment_build() {
+  # Comment build/context/dockerfile lines
+  sed -i \
+    -e 's/^\(\s*\)\(build:.*\)$/\1#\2/' \
+    -e 's/^\(\s*\)\(context:.*\)$/\1#\2/' \
+    -e 's/^\(\s*\)\(dockerfile:.*\)$/\1#\2/' \
+    "${COMPOSE_FILE}"
+}
+
+uncomment_build() {
+  # Uncomment previously commented build/context/dockerfile lines
+  sed -i \
+    -e 's/^\(\s*\)#\s*\(build:.*\)$/\1\2/' \
+    -e 's/^\(\s*\)#\s*\(context:.*\)$/\1\2/' \
+    -e 's/^\(\s*\)#\s*\(dockerfile:.*\)$/\1\2/' \
+    "${COMPOSE_FILE}"
+}
+
+###############################################################
+# MAIN
+###############################################################
+require_root
+check_docker
+ensure_config
+
+log "Project directory: ${SCRIPT_DIR}"
+log "Docker directory:  ${DOCKER_DIR}"
+log "Compose file:      ${COMPOSE_FILE}"
+
+IMAGE="$(get_image)"
+log "Detected image from docker-compose.yml: ${IMAGE}"
+
+echo
+read -r -p "Do you want to build the image locally? (y/N): " choice
+choice="${choice:-N}"
+
+if [[ "${choice}" =~ ^[yY]$ ]]; then
+  log "Local build selected."
+  uncomment_build
+  (
+    cd "${DOCKER_DIR}"
+    log "Stopping previous softvpn container if it exists..."
+    docker compose down || true
+
+    log "Building image locally (no cache)..."
+    DOCKER_BUILDKIT=0 docker compose build --no-cache --progress=plain
+  )
+else
+  log "Using prebuilt image (default)."
+  comment_build
+
+  log "Pulling image: ${IMAGE}"
+  docker pull "${IMAGE}"
 fi
 
-# If file exists, ensure user has edited it (no placeholders left)
-if grep -q "${PLACEHOLDER}" "${CONFIG_FILE}"; then
-  err "Config file '${CONFIG_FILE}' still contains placeholder values (${PLACEHOLDER})."
-  err "Please edit this file and replace ALL placeholders with real values, then re-run ./install.sh."
-  exit 1
+log "Starting softvpn container with docker compose..."
+(
+  cd "${DOCKER_DIR}"
+  docker compose up -d
+)
+
+log "Current softvpn container status:"
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" | grep -E '^softvpn' || true
+
+if [[ -x "${CHAOSBOX_RUN}" ]]; then
+  log "Running Chaosbox runtime script: ${CHAOSBOX_RUN}"
+  "${CHAOSBOX_RUN}"
+else
+  log "Chaosbox runtime script not found or not executable: ${CHAOSBOX_RUN}"
+  log "If you need Chaosbox features, please ensure this script exists and is executable."
 fi
 
-
-
-###############################################################
-# Root permission check
-###############################################################
-if [[ $EUID -ne 0 ]]; then
-  err "Please run this script as root (sudo ./install.sh)."
-  exit 1
-fi
-
-###############################################################
-# Check Docker environment
-###############################################################
-if ! command -v docker >/dev/null; then
-  err "Docker is not installed. Please install Docker first."
-  exit 1
-fi
-
-if ! docker compose version >/dev/null 2>&1; then
-  err "'docker compose' is not available. Install the Docker Compose plugin."
-  exit 1
-fi
-
-log "Docker environment check passed."
-
-###############################################################
-# 1) Build & run SoftEther VPN Docker service
-###############################################################
-log "Switching to Docker directory: ${DOCKER_DIR}"
-cd "${DOCKER_DIR}"
-
-log "Stopping previous 'softvpn' container if exists..."
-docker compose down || true
-
-log "Building Docker image chaosbox/softether-vpn:latest ..."
-DOCKER_BUILDKIT=0 docker compose build --no-cache --progress=plain
-
-log "Image build completed. Starting the 'softvpn' container..."
-docker compose up -d
-
-log "SoftVPN container status:"
-docker ps --format "table {{.Names}}\t{{.Status}}" | grep softvpn || true
-
-###############################################################
-# 2) Run Chaosbox main runtime script
-###############################################################
-log "Preparing to run Chaosbox runtime script: ${CHAOSBOX_RUN}"
-
-if [[ ! -x "${CHAOSBOX_RUN}" ]]; then
-  err "Cannot find executable: ${CHAOSBOX_RUN}"
-  exit 1
-fi
-
-log "Executing Chaosbox environment (run_chaosbox.sh)..."
-"${CHAOSBOX_RUN}"
-
-###############################################################
-# Installation summary
-###############################################################
 cat <<EOF
 
 -----------------------------------------------------
-Chaosbox Installation Completed Successfully 🎉
+Chaosbox + SoftEther VPN installation completed.
 -----------------------------------------------------
 
-SoftEther VPN:
-  - Container name: softvpn
-  - Check status:
-        docker ps | grep softvpn
-  - Check logs:
-        docker logs softvpn --tail=100
+- Image used: ${IMAGE}
+- Compose file: ${COMPOSE_FILE}
+- Config file: ${CONFIG_FILE}
 
-Chaosbox runtime:
-  chaosbox/latest/run_chaosbox.sh has been executed.
+To check VPN logs:
+  docker logs softvpn --tail=100
 
-Rollback:
-  Use chaosbox/latest/rollback.sh if needed.
-
-You may now start using Chaosbox and SoftEther VPN.
-
-Both username and password are the same "chaosbox"
-
-enjoy it!
+To stop VPN:
+  cd ${DOCKER_DIR}
+  docker compose down
 
 -----------------------------------------------------
 EOF

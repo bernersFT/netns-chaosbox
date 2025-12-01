@@ -1,9 +1,12 @@
 services:
   softvpn:
-    build:
-      context: .        
-      dockerfile: Dockerfile
     image: chaosbox/softether-vpn:latest
+
+    # Uncomment when building locally:
+    # build:
+    #   context: ../
+    #   dockerfile: ../Dockerfile
+
     container_name: softvpn
     restart: unless-stopped
 
