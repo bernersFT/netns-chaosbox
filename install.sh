@@ -112,20 +112,20 @@ get_image() {
 }
 
 comment_build() {
-  # Comment build/context/dockerfile lines
   sed -i \
-    -e 's/^\(\s*\)\(build:.*\)$/\1# \2/' \
-    -e 's/^\(\s*\)\(context:.*\)$/\1# \2/' \
-    -e 's/^\(\s*\)\(dockerfile:.*\)$/\1# \2/' \
+    -e 's/^\(\s*\)build:/\1# build:/' \
+    -e 's/^\(\s*\)context:/\1# context:/' \
+    -e 's/^\(\s*\)dockerfile:/\1# dockerfile:/' \
     "${COMPOSE_FILE}"
 }
 
+
 uncomment_build() {
-  # Uncomment previously commented build/context/dockerfile lines
+  # Uncomment build block while keeping indentation
   sed -i \
-    -e 's/^\(\s*\)#\s*\(build:.*\)$/\1\2/' \
-    -e 's/^\(\s*\)#\s*\(context:.*\)$/\1\2/' \
-    -e 's/^\(\s*\)#\s*\(dockerfile:.*\)$/\1\2/' \
+    -e 's/^\(\s*\)#\s*build:/\1build:/' \
+    -e 's/^\(\s*\)#\s*context:/\1  context:/' \
+    -e 's/^\(\s*\)#\s*dockerfile:/\1  dockerfile:/' \
     "${COMPOSE_FILE}"
 }
 
