@@ -189,6 +189,8 @@ fi
 ### --------------------------------------------------------
 ### Ensure required scripts (+x) after first clone
 ### --------------------------------------------------------
+# Detect project root (install.sh所在目录)
+PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 NEEDED_SCRIPTS=(
   "${PROJECT_DIR}/start.sh"
   "${PROJECT_DIR}/shutdown.sh"
