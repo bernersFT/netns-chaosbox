@@ -175,8 +175,11 @@ log "Starting softvpn container with docker compose..."
 log "Current softvpn container status:"
 docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Image}}" | grep -E '^softvpn' || true
 
+chmod +x "${CHAOSBOX_RUN}"
+
 if [[ -x "${CHAOSBOX_RUN}" ]]; then
   log "Running Chaosbox runtime script: ${CHAOSBOX_RUN}"
+
   "${CHAOSBOX_RUN}"
 else
   log "Chaosbox runtime script not found or not executable: ${CHAOSBOX_RUN}"
