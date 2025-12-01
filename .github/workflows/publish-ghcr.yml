@@ -11,6 +11,7 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: netns-chaosbox
   GHCR_USER: bernersFT   # your GitHub username (for login)
+  GHCR_PROJECT_NAME: berners
 
 jobs:
   build-and-push:
@@ -57,8 +58,8 @@ jobs:
           push: true
           platforms: linux/amd64
           tags: |
-            ghcr.io/${{ env.GHCR_USER }}/${{ env.IMAGE_NAME }}:latest
-            ghcr.io/${{ env.GHCR_USER }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version_tag }}
+            ghcr.io/${{ env.GHCR_PROJECT_NAME }}/${{ env.IMAGE_NAME }}:latest
+            ghcr.io/${{ env.GHCR_PROJECT_NAME }}/${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.version_tag }}
 
       - name: Print summary
         run: |
