@@ -193,6 +193,40 @@ else
     log "Namespace ${NS} not found, skipping NAT cleanup inside ns."
 fi
 
+###############################################################
+# 6.1 Remove FORWARD rules between WAN_DEV and VETH_ROOT_OUT
+###############################################################
+log "Removing FORWARD rules between ${WAN_DEV} <-> ${VETH_ROOT_OUT}"
+
+if command -v iptables >/dev/null 2>&1; then
+    # 先删 in=WAN_DEV, out=VETH_ROOT_OUT 的规则
+    while :; do
+        # --line-numbers 输出格式: num pkts bytes target prot opt in out source destination
+        LNS=$(iptables -nvL FORWARD --line-numbers 2>/dev/null \
+            | awk -v wan="${WAN_DEV}" -v veth="${VETH_ROOT_OUT}" '$7==wan && $8==veth {print $1}' \
+            | sort -rn)
+        [ -z "$LNS" ] && break
+
+        for ln in $LNS; do
+            run "iptables -D FORWARD ${ln}"
+        done
+    done
+
+    # 再删 in=VETH_ROOT_OUT, out=WAN_DEV 的规则
+    while :; do
+        LNS=$(iptables -nvL FORWARD --line-numbers 2>/dev/null \
+            | awk -v wan="${WAN_DEV}" -v veth="${VETH_ROOT_OUT}" '$7==veth && $8==wan {print $1}' \
+            | sort -rn)
+        [ -z "$LNS" ] && break
+
+        for ln in $LNS; do
+            run "iptables -D FORWARD ${ln}"
+        done
+    done
+else
+    log "WARNING: iptables not found, skipping FORWARD chain cleanup."
+fi
+
 # Reset FORWARD policy
 log "Setting root iptables FORWARD policy to ACCEPT"
 if command -v iptables >/dev/null 2>&1; then
