@@ -209,22 +209,68 @@ for SCRIPT in "${NEEDED_SCRIPTS[@]}"; do
   fi
 done
 
+# --------------------------------------------
+# Final success banner
+# --------------------------------------------
+
+IMAGE_DISPLAY="${IMAGE_FROM_COMPOSE:-ghcr.io/bernersft/netns-chaosbox:latest}"
+CONF_DISPLAY="${CHAOSBOX_CONF:-${PROJECT_DIR}/chaosbox.conf}"
+
 cat <<EOF
 
 -----------------------------------------------------
-Chaosbox + SoftEther VPN installation completed.
+  Chaosbox + SoftEther VPN installation completed.
 -----------------------------------------------------
 
-- Image used: ${IMAGE}
-- Compose file: ${COMPOSE_FILE}
-- Config file: ${CONFIG_FILE}
+VPN is up and ready. All default credentials are:
+
+  Username : chaosbox
+  Password : chaosbox
+  PSK      : chaosbox
+
+Supported VPN connection methods:
+  1. L2TP over IPsec
+  2. SoftEther VPN Client
+  3. IPsec (L2TPv3 / EtherIP)
+  4. SSTP (via SoftEther)
+  5. OpenVPN (if enabled in the server config)
+
+Runtime information:
+  Image used : ${IMAGE_DISPLAY}
+  Compose    : ${COMPOSE_FILE}
+  Config     : ${CONF_DISPLAY}
 
 To check VPN logs:
-  docker logs softvpn --tail=100
+  docker logs softvpn --tail=200
 
-To stop VPN:
-  cd ${DOCKER_DIR}
-  docker compose down
+To stop Chaosbox + VPN:
+  ./shutdown.sh
+
+To start Chaosbox + VPN again:
+  ./start.sh
+
+To completely uninstall:
+  ./uninstall.sh
+
+Example tc impairment commands (run on host, device veth2):
+
+  # 1) Add 120ms fixed latency
+  tc qdisc add dev veth2 root netem delay 120ms
+
+  # 2) Simulate 30% packet loss
+  tc qdisc add dev veth2 root netem loss 30%
+
+  # 3) Latency with jitter (80ms ± 50ms, normal distribution)
+  tc qdisc add dev veth2 root netem delay 80ms 50ms distribution normal
+
+  # 4) Simulate 10% packet duplication
+  tc qdisc add dev veth2 root netem duplicate 10%
+
+  # 5) Simulate 2% packet corruption
+  tc qdisc add dev veth2 root netem corrupt 2%
+
+  # Clear all impairments on veth2
+  tc qdisc del dev veth2 root
 
 -----------------------------------------------------
 EOF
