@@ -195,6 +195,7 @@ NEEDED_SCRIPTS=(
   "${PROJECT_DIR}/start.sh"
   "${PROJECT_DIR}/shutdown.sh"
   "${PROJECT_DIR}/uninstall.sh"
+  "${PROJECT_DIR}/restart.sh"
 )
 
 for SCRIPT in "${NEEDED_SCRIPTS[@]}"; do

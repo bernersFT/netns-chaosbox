@@ -34,7 +34,7 @@ FROM debian:12-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-RUN apt-get update && \
+RUN apt-get update -o Acquire::ForceIPv4=true && \
     apt-get install -y --no-install-recommends \
         ca-certificates \
         iproute2 \

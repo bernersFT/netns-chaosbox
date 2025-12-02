@@ -102,5 +102,23 @@ if [ ! -f "$INIT_FLAG" ]; then
   sleep 2
 fi
 
+### ---------------------------------------------------------------
+### Patch vpn_server.config (SecureNAT RAW/KERNEL mode disable)
+### ---------------------------------------------------------------
+CONFIG_FILE="${VPN_DIR}/vpn_server.config"
+
+if [ -f "$CONFIG_FILE" ]; then
+    echo "[entrypoint] Patching vpn_server.config (DisableIpRawModeSecureNAT, DisableKernelModeSecureNAT) ..."
+
+    sed -i 's/^\([[:space:]]*bool DisableIpRawModeSecureNAT\) .*/\1 true/' "$CONFIG_FILE"
+    sed -i 's/^\([[:space:]]*bool DisableKernelModeSecureNAT\) .*/\1 true/' "$CONFIG_FILE"
+
+    echo "[entrypoint] Patch completed. Current values:"
+    grep DisableIpRawModeSecureNAT "$CONFIG_FILE" || true
+    grep DisableKernelModeSecureNAT "$CONFIG_FILE" || true
+else
+    echo "[entrypoint] WARNING: vpn_server.config not found, skipping patch."
+fi
+
 echo "[entrypoint] starting vpnserver in foreground: execsvc ..."
 exec "${VPN_SERVER}" execsvc

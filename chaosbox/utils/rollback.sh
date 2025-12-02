@@ -2,37 +2,27 @@
 set -euo pipefail
 
 ###############################################################################
-# netns-chaosbox - Rollback Script (V1.0)
+# netns-chaosbox - Rollback Script (V2.0)
 #
-# This script reverts the changes made by the V1.0 deploy script:
-#   - Removes tc qdisc on veth2
+# This script reverts the changes made by run_chaosbox.sh:
+#   - Removes tc qdisc on impairment interface
 #   - Deletes policy routing rules
-#   - Flushes the custom route table "chaosbox"
-#   - Deletes the namespace "chaosbox" and its veth peers
-#   - Optionally cleans up the custom table entry in /etc/iproute2/rt_tables
+#   - Flushes the custom route table (chaosbox)
+#   - Deletes the namespace and its veth peers
+#   - Cleans up iptables NAT rules and resets FORWARD policy
+#   - Optionally removes custom table entry in /etc/iproute2/rt_tables
 #
-# NOTE:
-#   This assumes the same parameters as the deploy script. If you change
-#   names / IPs there, keep them in sync here.
+# All critical parameters are read from:
+#   - chaosbox.conf          (WAN-related)
+#   - chaosbox/latest/run_chaosbox.sh (namespace, veth, rt-table, nets)
 ###############################################################################
 
-NS="chaosbox"
-WAN_DEV="ens4"        # MUST match deploy.sh
-WAN_DEV_IP="10.146.43.17"
-
-VETH_ROOT_IN="veth0"
-VETH_NS_IN="veth1"
-VETH_ROOT_OUT="veth2"
-VETH_NS_OUT="veth3"
-
-RT_TABLE_ID=100
-RT_TABLE_NAME="chaosbox"
-
-NET_IN="10.0.0.0/30"
-NET_OUT="10.0.1.0/30"
+#############################################
+# 0. Common helpers
+#############################################
 
 log() {
-    echo "[$(date +"%Y-%m-%d %H:%M:%S")] $*"
+    echo "[$(date +"%Y-%m-%d %H:%M:%S")] [rollback] $*"
 }
 
 run() {
@@ -40,10 +30,107 @@ run() {
     eval "$@"
 }
 
+
+get_var() {
+    local file="$1"
+    local key="$2"
+    local default="${3:-}"
+
+    if [[ ! -f "$file" ]]; then
+        echo "$default"
+        return
+    fi
+
+
+    local line
+    line=$(grep -E "^${key}=" "$file" 2>/dev/null | head -n1 || true)
+    if [[ -z "$line" ]]; then
+        echo "$default"
+        return
+    fi
+
+    local value="${line#*=}"
+
+    value="${value%\"}"
+    value="${value#\"}"
+    value="${value%\'}"
+    value="${value#\'}"
+
+    echo "$value"
+}
+
 log "Starting netns-chaosbox rollback…"
 
+#############################################
+# 1. Locate project root / config / run_chaosbox.sh
+#############################################
+
+
+SCRIPT_DIR="$(cd -- "$(dirname "$0")" && pwd)"
+CHAOSBOX_DIR="$(dirname "$SCRIPT_DIR")"          # .../chaosbox
+PROJECT_ROOT="$(dirname "$CHAOSBOX_DIR")"       
+
+CHAOSBOX_CONF="${PROJECT_ROOT}/chaosbox.conf"
+RUN_CHAOSBOX="${CHAOSBOX_DIR}/latest/run_chaosbox.sh"
+
+log "SCRIPT_DIR    = ${SCRIPT_DIR}"
+log "CHAOSBOX_DIR  = ${CHAOSBOX_DIR}"
+log "PROJECT_ROOT  = ${PROJECT_ROOT}"
+log "CHAOSBOX_CONF = ${CHAOSBOX_CONF}"
+log "RUN_CHAOSBOX  = ${RUN_CHAOSBOX}"
+
+if [[ ! -f "${CHAOSBOX_CONF}" ]]; then
+    log "ERROR: chaosbox.conf not found at: ${CHAOSBOX_CONF}"
+    exit 1
+fi
+
+if [[ ! -f "${RUN_CHAOSBOX}" ]]; then
+    log "ERROR: run_chaosbox.sh not found at: ${RUN_CHAOSBOX}"
+    exit 1
+fi
+
+#############################################
+# 2. Load parameters from chaosbox.conf / run_chaosbox.sh
+#############################################
+
+# WAN-related from chaosbox.conf (MUST be set by user)
+WAN_DEV="$(get_var "${CHAOSBOX_CONF}" "WAN_DEV")"
+WAN_DEV_IP="$(get_var "${CHAOSBOX_CONF}" "WAN_DEV_IP")"
+
+if [[ -z "${WAN_DEV}" || -z "${WAN_DEV_IP}" ]]; then
+    log "ERROR: WAN_DEV or WAN_DEV_IP is empty in chaosbox.conf"
+    exit 1
+fi
+
+# NS / veth / routes / table from run_chaosbox.sh
+NS="$(get_var "${RUN_CHAOSBOX}" "NS" "chaosbox")"
+VETH_ROOT_IN="$(get_var "${RUN_CHAOSBOX}" "VETH_ROOT_IN" "veth0")"
+VETH_NS_IN="$(get_var "${RUN_CHAOSBOX}" "VETH_NS_IN" "veth1")"
+VETH_ROOT_OUT="$(get_var "${RUN_CHAOSBOX}" "VETH_ROOT_OUT" "veth2")"
+VETH_NS_OUT="$(get_var "${RUN_CHAOSBOX}" "VETH_NS_OUT" "veth3")"
+
+RT_TABLE_ID="$(get_var "${RUN_CHAOSBOX}" "RT_TABLE_ID" "100")"
+RT_TABLE_NAME="$(get_var "${RUN_CHAOSBOX}" "RT_TABLE_NAME" "chaosbox")"
+
+NET_IN="$(get_var "${RUN_CHAOSBOX}" "NET_IN" "10.0.0.0/30")"
+NET_OUT="$(get_var "${RUN_CHAOSBOX}" "NET_OUT" "10.0.1.0/30")"
+
+log "Loaded parameters:"
+log "  NS            = ${NS}"
+log "  WAN_DEV       = ${WAN_DEV}"
+log "  WAN_DEV_IP    = ${WAN_DEV_IP}"
+log "  VETH_ROOT_IN  = ${VETH_ROOT_IN}"
+log "  VETH_NS_IN    = ${VETH_NS_IN}"
+log "  VETH_ROOT_OUT = ${VETH_ROOT_OUT}"
+log "  VETH_NS_OUT   = ${VETH_NS_OUT}"
+log "  RT_TABLE_ID   = ${RT_TABLE_ID}"
+log "  RT_TABLE_NAME = ${RT_TABLE_NAME}"
+log "  NET_IN        = ${NET_IN}"
+log "  NET_OUT       = ${NET_OUT}"
+log "------------------------------------------------------------"
+
 ###############################################################################
-# 1. Remove tc qdisc from impairment interface (veth2)
+# 3. Remove tc qdisc from impairment interface (VETH_ROOT_OUT)
 ###############################################################################
 
 if ip link show "${VETH_ROOT_OUT}" >/dev/null 2>&1; then
@@ -54,65 +141,68 @@ else
 fi
 
 ###############################################################################
-# 2. Remove policy routing rules (prefs 100/110/140/150/200)
+# 4. Remove policy routing rules
 ###############################################################################
 
 log "Removing policy routing rules (if present)"
 
-for pref in 100 110 140 150 160 170 180 190 120 130  200; do
-    # ip rule del pref will silently fail if not present, that's fine
+for pref in 100 110 120 130 140 150 160 170 180 190 200; do
     run "ip rule del pref ${pref} 2>/dev/null || true"
 done
 
 ###############################################################################
-# 3. Flush custom route table "chaosbox"
+# 5. Flush custom route table
 ###############################################################################
 
 log "Flushing routes in table '${RT_TABLE_NAME}'"
 run "ip route flush table ${RT_TABLE_NAME} 2>/dev/null || true"
 
-# Optional: also remove NET_IN/NET_OUT routes from main table if you want
-log "Optionally cleaning direct routes for ${NET_IN} and ${NET_OUT} from main table"
+log "Removing direct routes for ${NET_IN} and ${NET_OUT} from main table"
 run "ip route del ${NET_IN} dev ${VETH_ROOT_IN} 2>/dev/null || true"
 run "ip route del ${NET_OUT} dev ${VETH_ROOT_OUT} 2>/dev/null || true"
 
 ###############################################################################
-# 4. Clean up iptables rules
-###############################################################################
-# In deploy.sh you:
-#   - Flushed all tables
-#   - Added:
-#       ip netns exec chaosbox iptables -t nat -A POSTROUTING -o veth3 -j MASQUERADE
-#       iptables -t nat -A POSTROUTING -o ens4   -j MASQUERADE
-#
-# Here we try to remove those specific MASQUERADE rules.
+# 6. Clean up iptables MASQUERADE rules
 ###############################################################################
 
-log "Removing MASQUERADE rules on root (matching -o ${WAN_DEV})"
+log "Removing MASQUERADE rules on root ns (matching -o ${WAN_DEV})"
 
-# Delete MASQUERADE rules on WAN_DEV in root ns
-while iptables -t nat -S POSTROUTING 2>/dev/null | grep -q "MASQUERADE" | grep -q "\-o ${WAN_DEV}"; do
-    RULE=$(iptables -t nat -S POSTROUTING | grep "MASQUERADE" | grep "\-o ${WAN_DEV}" | head -n1)
-    # Replace -A with -D to delete
-    RULE=${RULE/-A /-D }
-    run "iptables -t nat ${RULE}"
-done
+if command -v iptables >/dev/null 2>&1; then
+    while iptables -t nat -S POSTROUTING 2>/dev/null | grep -q "MASQUERADE" | grep -q "\-o ${WAN_DEV}"; do
+        RULE=$(iptables -t nat -S POSTROUTING | grep "MASQUERADE" | grep "\-o ${WAN_DEV}" | head -n1)
+        RULE=${RULE/-A /-D }
+        run "iptables -t nat ${RULE}"
+    done
+else
+    log "WARNING: iptables not found, skipping root ns NAT cleanup."
+fi
 
-log "Removing MASQUERADE rule inside namespace ${NS} (matching -o ${VETH_NS_OUT})"
+log "Removing MASQUERADE rules inside namespace ${NS} (matching -o ${VETH_NS_OUT})"
 
 if ip netns list | grep -q "^${NS}\b"; then
-    # Delete MASQUERADE rules on veth3 inside the namespace
-    while ip netns exec "${NS}" iptables -t nat -S POSTROUTING 2>/dev/null | grep -q "MASQUERADE" | grep -q "\-o ${VETH_NS_OUT}"; do
-        RULE=$(ip netns exec "${NS}" iptables -t nat -S POSTROUTING | grep "MASQUERADE" | grep "\-o ${VETH_NS_OUT}" | head -n1)
-        RULE=${RULE/-A /-D }
-        run "ip netns exec ${NS} iptables -t nat ${RULE}"
-    done
+    if command -v iptables >/dev/null 2>&1; then
+        while ip netns exec "${NS}" iptables -t nat -S POSTROUTING 2>/dev/null | grep -q "MASQUERADE" | grep -q "\-o ${VETH_NS_OUT}"; do
+            RULE=$(ip netns exec "${NS}" iptables -t nat -S POSTROUTING | grep "MASQUERADE" | grep "\-o ${VETH_NS_OUT}" | head -n1)
+            RULE=${RULE/-A /-D }
+            run "ip netns exec ${NS} iptables -t nat ${RULE}"
+        done
+    else
+        log "WARNING: iptables not found, skipping NAT cleanup inside namespace."
+    fi
 else
     log "Namespace ${NS} not found, skipping NAT cleanup inside ns."
 fi
 
+# Reset FORWARD policy
+log "Setting root iptables FORWARD policy to ACCEPT"
+if command -v iptables >/dev/null 2>&1; then
+    run "iptables -P FORWARD ACCEPT || true"
+else
+    log "WARNING: iptables not found, cannot set FORWARD policy."
+fi
+
 ###############################################################################
-# 5. Delete namespace (this will implicitly delete veth1/veth3)
+# 7. Delete namespace (this will implicitly delete ns-side veth)
 ###############################################################################
 
 if ip netns list | grep -q "^${NS}\b"; then
@@ -123,7 +213,7 @@ else
 fi
 
 ###############################################################################
-# 6. Delete veth devices on root side (veth0, veth2)
+# 8. Delete veth devices on root side
 ###############################################################################
 
 for dev in "${VETH_ROOT_IN}" "${VETH_ROOT_OUT}"; do
@@ -136,16 +226,18 @@ for dev in "${VETH_ROOT_IN}" "${VETH_ROOT_OUT}"; do
 done
 
 ###############################################################################
-# 7. (Optional) Clean /etc/iproute2/rt_tables entry
-###############################################################################
-# If you prefer to leave "100 chaosbox" registered, comment this block out.
+# 9. (Optional) Clean /etc/iproute2/rt_tables entry
 ###############################################################################
 
-if grep -qE "^${RT_TABLE_ID}[[:space:]]+${RT_TABLE_NAME}\$" /etc/iproute2/rt_tables; then
-    log "Removing ${RT_TABLE_ID} ${RT_TABLE_NAME} from /etc/iproute2/rt_tables"
-    sudo sed -i.bak "/^${RT_TABLE_ID}[[:space:]]\\+${RT_TABLE_NAME}\$/d" /etc/iproute2/rt_tables
+if [[ -f /etc/iproute2/rt_tables ]]; then
+    if grep -qE "^${RT_TABLE_ID}[[:space:]]+${RT_TABLE_NAME}\$" /etc/iproute2/rt_tables; then
+        log "Removing '${RT_TABLE_ID} ${RT_TABLE_NAME}' from /etc/iproute2/rt_tables"
+        run "sed -i.bak \"/^${RT_TABLE_ID}[[:space:]]\\+${RT_TABLE_NAME}\$/d\" /etc/iproute2/rt_tables"
+    else
+        log "Route table entry ${RT_TABLE_ID} ${RT_TABLE_NAME} not found in /etc/iproute2/rt_tables (skipping)."
+    fi
 else
-    log "Route table entry ${RT_TABLE_ID} ${RT_TABLE_NAME} not found in /etc/iproute2/rt_tables (skipping)."
+    log "/etc/iproute2/rt_tables not found, skipping table cleanup."
 fi
 
 log "Rollback completed successfully."
