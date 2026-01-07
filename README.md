@@ -21,6 +21,7 @@ You can configure various network parameters on the Chaosbox node, including lat
 Finally, Chaosbox is not only a practical solution, but also an excellent learning resource for understanding Linux networking. During its development, we encountered and resolved several classical issues related to network forwarding. You can reproduce these scenarios yourself—it’s both educational and fun. I’m glad to assist you if needed.
 
 ## HOW TO USE
+### Installation
 ``` shell
 git clone https://github.com/bernersFT/netns-chaosbox.git
 cd netns-chaosbox
@@ -28,6 +29,27 @@ chmod +x install.sh
 sudo ./install.sh 
 ```
 DONOT FORGET TO EDIT 'chaosbox.conf'
+
+### User cases
+Example tc impairment commands (run on host, device veth2):
+
+  # 1) Add 120ms fixed latency
+  tc qdisc add dev veth2 root netem delay 120ms
+
+  # 2) Simulate 30% packet loss
+  tc qdisc add dev veth2 root netem loss 30%
+
+  # 3) Latency with jitter (80ms ± 50ms, normal distribution)
+  tc qdisc add dev veth2 root netem delay 80ms 50ms distribution normal
+
+  # 4) Simulate 10% packet duplication
+  tc qdisc add dev veth2 root netem duplicate 10%
+
+  # 5) Simulate 2% packet corruption
+  tc qdisc add dev veth2 root netem corrupt 2%
+
+  # Clear all impairments on veth2
+  tc qdisc del dev veth2 root
 
 # **1. Why netns-chaosbox is Unique**
 
