@@ -34,23 +34,31 @@ DONOT FORGET TO EDIT 'chaosbox.conf'
 Example tc impairment commands (run on host, device veth2):
 
   #### 1) Add 120ms fixed latency
+  ``` shell
   tc qdisc add dev veth2 root netem delay 120ms
-
+  ```
   #### 2) Simulate 30% packet loss
+    ``` shell
   tc qdisc add dev veth2 root netem loss 30%
+  ```
 
   #### 3) Latency with jitter (80ms ± 50ms, normal distribution)
+    ``` shell
   tc qdisc add dev veth2 root netem delay 80ms 50ms distribution normal
-
+  ```
   #### 4) Simulate 10% packet duplication
+    ``` shell
   tc qdisc add dev veth2 root netem duplicate 10%
+  ```
 
   #### 5) Simulate 2% packet corruption
+  ``` shell
   tc qdisc add dev veth2 root netem corrupt 2%
-
+  ``` 
   #### Clear all impairments on veth2
+    ``` shell
   tc qdisc del dev veth2 root
-
+  ```
 # **1. Why netns-chaosbox is Unique**
 
 |Feature / Capability|**netns-chaosbox**|tc netem|Toxiproxy|Pumba|Chaos Mesh|Istio Fault Injection|WANem|
