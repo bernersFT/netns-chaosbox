@@ -19,6 +19,16 @@ client → vpn →  |   netns-chaosbox      | → your service
 You can configure various network parameters on the Chaosbox node, including latency, jitter, packet loss, bandwidth limits, packet reordering, and all other impairment types supported by **tc**.
 
 Finally, Chaosbox is not only a practical solution, but also an excellent learning resource for understanding Linux networking. During its development, we encountered and resolved several classical issues related to network forwarding. You can reproduce these scenarios yourself—it’s both educational and fun. I’m glad to assist you if needed.
+
+## HOW TO USE
+``` shell
+git clone https://github.com/bernersFT/netns-chaosbox.git
+cd netns-chaosbox
+chmod +x install.sh 
+sudo ./install.sh 
+```
+DONOT FORGET TO EDIT 'chaosbox.conf'
+
 # **1. Why netns-chaosbox is Unique**
 
 |Feature / Capability|**netns-chaosbox**|tc netem|Toxiproxy|Pumba|Chaos Mesh|Istio Fault Injection|WANem|
