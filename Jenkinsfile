@@ -127,90 +127,83 @@ pipeline {
                 sh '''
                     set -eu
 
-                    cat semgrep-results.json |
-                    docker run --rm -i python:3.13-alpine \
-                    python3 -c '
-        import json
-        import sys
+                    test -s semgrep-results.json
 
-        report = json.load(sys.stdin)
+                    echo "===== Semgrep Summary ====="
 
-        results = report.get("results", [])
-        scan_errors = report.get("errors", [])
+                    TOTAL="$(
+                        docker run --rm -i \
+                        ghcr.io/jqlang/jq:latest \
+                        '.results | length' \
+                        < semgrep-results.json
+                    )"
 
-        severity_counts = {
-            "ERROR": 0,
-            "WARNING": 0,
-            "INFO": 0,
-            "UNKNOWN": 0,
-        }
+                    ERROR_COUNT="$(
+                        docker run --rm -i \
+                        ghcr.io/jqlang/jq:latest \
+                        '[.results[] | select(.extra.severity == "ERROR")] | length' \
+                        < semgrep-results.json
+                    )"
 
-        affected_files = set()
+                    WARNING_COUNT="$(
+                        docker run --rm -i \
+                        ghcr.io/jqlang/jq:latest \
+                        '[.results[] | select(.extra.severity == "WARNING")] | length' \
+                        < semgrep-results.json
+                    )"
 
-        for finding in results:
-            severity = (
-                finding.get("extra", {})
-                .get("severity", "UNKNOWN")
-                .upper()
-            )
+                    INFO_COUNT="$(
+                        docker run --rm -i \
+                        ghcr.io/jqlang/jq:latest \
+                        '[.results[] | select(.extra.severity == "INFO")] | length' \
+                        < semgrep-results.json
+                    )"
 
-            if severity not in severity_counts:
-                severity = "UNKNOWN"
+                    AFFECTED_FILES="$(
+                        docker run --rm -i \
+                        ghcr.io/jqlang/jq:latest \
+                        '[.results[].path] | unique | length' \
+                        < semgrep-results.json
+                    )"
 
-            severity_counts[severity] += 1
+                    SCAN_WARNINGS="$(
+                        docker run --rm -i \
+                        ghcr.io/jqlang/jq:latest \
+                        '.errors | length' \
+                        < semgrep-results.json
+                    )"
 
-            path = finding.get("path")
-            if path:
-                affected_files.add(path)
+                    echo "ERROR:          ${ERROR_COUNT}"
+                    echo "WARNING:        ${WARNING_COUNT}"
+                    echo "INFO:           ${INFO_COUNT}"
+                    echo "TOTAL:          ${TOTAL}"
+                    echo "FILES AFFECTED: ${AFFECTED_FILES}"
+                    echo "SCAN WARNINGS:  ${SCAN_WARNINGS}"
 
-        print("")
-        print("===== Semgrep Summary =====")
-        print(f"ERROR:          {severity_counts['ERROR']}")
-        print(f"WARNING:        {severity_counts['WARNING']}")
-        print(f"INFO:           {severity_counts['INFO']}")
-        print(f"UNKNOWN:        {severity_counts['UNKNOWN']}")
-        print(f"TOTAL:          {len(results)}")
-        print(f"FILES AFFECTED: {len(affected_files)}")
-        print(f"SCAN WARNINGS:  {len(scan_errors)}")
-        print("")
+                    echo ""
+                    echo "===== Detailed Findings ====="
 
-        if affected_files:
-            print("===== Affected Files =====")
-            for path in sorted(affected_files):
-                print(path)
-            print("")
+                    docker run --rm -i \
+                    ghcr.io/jqlang/jq:latest \
+                    -r '
+                        .results[] |
+                        "[\\(.extra.severity)] \\(.path):\\(.start.line)
+        Rule: \\(.check_id)
+        Message: \\(.extra.message)
+        "
+                    ' \
+                    < semgrep-results.json
 
-        if results:
-            print("===== Findings =====")
+                    echo ""
+                    echo "===== Security Gate ====="
 
-            for index, finding in enumerate(results, start=1):
-                extra = finding.get("extra", {})
-                start = finding.get("start", {})
+                    if [ "${ERROR_COUNT}" -gt 0 ]; then
+                        echo "SECURITY GATE FAILED"
+                        echo "${ERROR_COUNT} ERROR-level finding(s) detected."
+                        exit 1
+                    fi
 
-                severity = extra.get("severity", "UNKNOWN")
-                path = finding.get("path", "unknown")
-                line = start.get("line", "?")
-                rule = finding.get("check_id", "unknown")
-                message = extra.get("message", "").replace("\\n", " ")
-
-                print(
-                    f"{index}. [{severity}] "
-                    f"{path}:{line} "
-                    f"{rule}"
-                )
-                print(f"   {message}")
-
-            print("")
-
-        if severity_counts["ERROR"] > 0:
-            print(
-                "SECURITY GATE FAILED: "
-                "Semgrep ERROR findings detected."
-            )
-            sys.exit(1)
-
-        print("SECURITY GATE PASSED")
-        '
+                    echo "SECURITY GATE PASSED"
                 '''
             }
         }
