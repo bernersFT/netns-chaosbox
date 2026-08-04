@@ -120,16 +120,98 @@ pipeline {
                 '''
             }
         }
-
-        stage('Archive Report') {
+        stage('Evaluate Findings') {
             steps {
-                echo '===== Archive Semgrep report ====='
+                echo '===== Evaluate Semgrep findings ====='
 
-                archiveArtifacts(
-                    artifacts: 'semgrep-results.json',
-                    fingerprint: true,
-                    onlyIfSuccessful: false
+                sh '''
+                    set -eu
+
+                    cat semgrep-results.json |
+                    docker run --rm -i python:3.13-alpine \
+                    python3 -c '
+        import json
+        import sys
+
+        report = json.load(sys.stdin)
+
+        results = report.get("results", [])
+        scan_errors = report.get("errors", [])
+
+        severity_counts = {
+            "ERROR": 0,
+            "WARNING": 0,
+            "INFO": 0,
+            "UNKNOWN": 0,
+        }
+
+        affected_files = set()
+
+        for finding in results:
+            severity = (
+                finding.get("extra", {})
+                .get("severity", "UNKNOWN")
+                .upper()
+            )
+
+            if severity not in severity_counts:
+                severity = "UNKNOWN"
+
+            severity_counts[severity] += 1
+
+            path = finding.get("path")
+            if path:
+                affected_files.add(path)
+
+        print("")
+        print("===== Semgrep Summary =====")
+        print(f"ERROR:          {severity_counts['ERROR']}")
+        print(f"WARNING:        {severity_counts['WARNING']}")
+        print(f"INFO:           {severity_counts['INFO']}")
+        print(f"UNKNOWN:        {severity_counts['UNKNOWN']}")
+        print(f"TOTAL:          {len(results)}")
+        print(f"FILES AFFECTED: {len(affected_files)}")
+        print(f"SCAN WARNINGS:  {len(scan_errors)}")
+        print("")
+
+        if affected_files:
+            print("===== Affected Files =====")
+            for path in sorted(affected_files):
+                print(path)
+            print("")
+
+        if results:
+            print("===== Findings =====")
+
+            for index, finding in enumerate(results, start=1):
+                extra = finding.get("extra", {})
+                start = finding.get("start", {})
+
+                severity = extra.get("severity", "UNKNOWN")
+                path = finding.get("path", "unknown")
+                line = start.get("line", "?")
+                rule = finding.get("check_id", "unknown")
+                message = extra.get("message", "").replace("\\n", " ")
+
+                print(
+                    f"{index}. [{severity}] "
+                    f"{path}:{line} "
+                    f"{rule}"
                 )
+                print(f"   {message}")
+
+            print("")
+
+        if severity_counts["ERROR"] > 0:
+            print(
+                "SECURITY GATE FAILED: "
+                "Semgrep ERROR findings detected."
+            )
+            sys.exit(1)
+
+        print("SECURITY GATE PASSED")
+        '
+                '''
             }
         }
     }
@@ -144,6 +226,14 @@ pipeline {
         }
 
         always {
+            echo '===== Archive Semgrep report ====='
+
+            archiveArtifacts(
+                artifacts: 'semgrep-results.json',
+                fingerprint: true,
+                allowEmptyArchive: true
+            )
+
             echo '===== Clean temporary Semgrep container ====='
 
             sh '''
@@ -151,7 +241,7 @@ pipeline {
                     CONTAINER_ID="$(cat semgrep-container.id)"
 
                     docker rm -f "${CONTAINER_ID}" \
-                      >/dev/null 2>&1 || true
+                    >/dev/null 2>&1 || true
 
                     rm -f semgrep-container.id
                 fi
